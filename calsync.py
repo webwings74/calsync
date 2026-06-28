@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 CalSync - Synology Calendar
-Downloadt een ICS-vliegrooster en importeert het in de Synology-agenda.
-Reisverlof-dagen worden uitgefilterd.
+Downloads an ICS flight roster and imports it into the Synology calendar.
+Travel leave days are filtered out.
 
-Gebruik: python3 calsync.py
-Configuratie: config.py (zie config-example.py)
+Usage: python3 calsync.py
+Configuration: config.py (see config-example.py)
 """
 
 import urllib.request
@@ -14,11 +14,10 @@ import tempfile
 import os
 import sys
 import logging
-from datetime import datetime
 
 import config
 
-# SUMMARY-waarden die worden overgeslagen (hoofdletterongevoelig)
+# SUMMARY values to skip (case-insensitive)
 SKIP_SUMMARIES = ["reisverlof"]
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -35,24 +34,24 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-# ── Functies ──────────────────────────────────────────────────────────────────
+# ── Functions ─────────────────────────────────────────────────────────────────
 
 def download_ics(url: str) -> str:
-    log.info(f"Downloaden: {url}")
+    log.info(f"Downloading: {url}")
     try:
         with urllib.request.urlopen(url, timeout=30) as resp:
             content = resp.read().decode("utf-8")
-        log.info(f"Ontvangen: {len(content):,} bytes")
+        log.info(f"Received: {len(content):,} bytes")
         return content
     except Exception as e:
-        log.error(f"Download mislukt: {e}")
+        log.error(f"Download failed: {e}")
         raise
 
 
 def filter_events(ics_content: str) -> str:
     """
-    Verwijdert VEVENT-blokken waarvan de SUMMARY een waarde uit
-    SKIP_SUMMARIES bevat. De rest van de kalender blijft intact.
+    Removes VEVENT blocks whose SUMMARY contains a value from
+    SKIP_SUMMARIES. The rest of the calendar is left intact.
     """
     lines = ics_content.splitlines()
     result = []
@@ -89,15 +88,15 @@ def filter_events(ics_content: str) -> str:
         else:
             result.append(line)
 
-    log.info(f"Filter: {kept} events behouden, {skipped} overgeslagen (Reisverlof)")
+    log.info(f"Filter: {kept} events kept, {skipped} skipped (travel leave)")
     return "\n".join(result)
 
 
 def import_to_calendar(ics_content: str) -> None:
     """
-    Schrijft het gefilterde ICS naar een tijdelijk bestand en importeert
-    het via DAViCal's load_calendar.php als synocalendar-gebruiker.
-    Gebruikt 'replace' zodat verwijderde of gewijzigde vluchten bijgewerkt worden.
+    Writes the filtered ICS to a temp file and imports it via
+    DAViCal's load_calendar.php as the synocalendar user.
+    Uses 'replace' so deleted or changed flights are updated.
     """
     tmp = tempfile.NamedTemporaryFile(
         mode="w", suffix=".ics", delete=False, encoding="utf-8"
@@ -107,7 +106,7 @@ def import_to_calendar(ics_content: str) -> None:
         tmp.close()
         os.chmod(tmp.name, 0o644)
 
-        log.info(f"Importeren naar kalender: {config.CAL_PATH}")
+        log.info(f"Importing into calendar: {config.CAL_PATH}")
         result = subprocess.run(
             [
                 "sudo", "-u", "synocalendar",
@@ -121,9 +120,9 @@ def import_to_calendar(ics_content: str) -> None:
 
         output = (result.stdout + result.stderr).strip()
         if "was loaded from file" in output:
-            log.info("Import geslaagd ✓")
+            log.info("Import successful ✓")
         else:
-            log.error(f"Import mislukt: {output}")
+            log.error(f"Import failed: {output}")
             sys.exit(1)
 
     finally:
@@ -134,16 +133,16 @@ def import_to_calendar(ics_content: str) -> None:
 
 def main() -> None:
     log.info("=" * 50)
-    log.info("CalSync gestart")
+    log.info("CalSync started")
     log.info("=" * 50)
 
     try:
         ics      = download_ics(config.ICS_URL)
         filtered = filter_events(ics)
         import_to_calendar(filtered)
-        log.info("Sync voltooid ✓")
+        log.info("Sync completed ✓")
     except Exception as e:
-        log.error(f"Sync mislukt: {e}")
+        log.error(f"Sync failed: {e}")
         sys.exit(1)
 
 
