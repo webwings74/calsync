@@ -1,0 +1,5 @@
+ICS_URL     = "https://example.com/your-roster.ics"
+CAL_PATH    = "/username/calendar-id/"
+PHP_BIN     = "/usr/local/bin/php74"
+LOAD_SCRIPT = "/volume1/@appstore/Calendar/davical/scripts/load_calendar.php"
+LOG_FILE    = "/volume1/Projects/calsync.log"
