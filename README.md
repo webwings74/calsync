@@ -55,3 +55,7 @@ Schedule the script in Synology Task Scheduler:
   ```bash
   python3 /volume1/Projects/calsync/calsync.py
   ```
+
+## License
+
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may use, modify, and distribute this code for any noncommercial purpose.
