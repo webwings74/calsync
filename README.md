@@ -1,5 +1,7 @@
 # CalSync
 
+<img src="https://upload.wikimedia.org/wikipedia/commons/c/c7/KLM_logo.svg" alt="KLM logo" height="60" align="right">
+
 A Python script, that can be automatically run via the Task Planner of a Synology NAS, like a DS718+. 
 It Syncs an KLM ICS flight roster to a Synology Calendar (DAViCal).
 Travel leave entries are automatically filtered out before import.
