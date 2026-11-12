@@ -29,11 +29,23 @@ from urllib.parse import quote, urljoin
 import config
 
 LOCATION = "P30 Personeelsparkeerterrein"
+
+# Known places, matched against the original roster title (case-insensitive).
+# lat/lon give Apple Calendar an exact map pin (via X-APPLE-STRUCTURED-LOCATION).
+PLACES = {
+    "spl-oost": {
+        "name": "SPL-Oost",
+        "address": "Behoudenvaartweg, 1117 EL Luchthaven Schiphol",
+        "lat": 52.308478, "lon": 4.803679,
+    },
+}
 HOME = "AMS"
 DAYS_NL = ["ma", "di", "wo", "do", "vr", "za", "zo"]
 
 FLIGHT_RE = re.compile(r"^(DH/\s*)?(KL\d+)\s+([A-Z]{3})-([A-Z]{3})")
 NIGHTSTOP_RE = re.compile(r"^Nachtstop\s+([A-Z]{3})")
+# Simulator / training sessions, shown as "Richard: Simulator"
+SIM_RE = re.compile(r"\b(loe check|fcl check|type recurrent)\b", re.IGNORECASE)
 
 
 # ── Reading the roster ────────────────────────────────────────────────────────
@@ -145,7 +157,15 @@ def build_duties(events: list) -> list:
         if m:
             d["nightstops"].append({"apt": m.group(1), "start": ev["start"]})
 
-    return [d for d in duties if d["flights"]]
+    duties = [dict(d, kind="flight") for d in duties if d["flights"]]
+
+    # Simulator / training sessions become their own events
+    for ev in events:
+        if SIM_RE.search(ev.get("summary", "")) and not ev.get("all_day"):
+            duties.append({"kind": "sim", "start": ev["start"], "end": ev["end"],
+                           "summary": ev["summary"], "incomplete": False})
+
+    return sorted(duties, key=lambda d: d["start"])
 
 
 def destinations(duty: dict) -> list:
@@ -158,10 +178,12 @@ def destinations(duty: dict) -> list:
 
 
 def title(duty: dict) -> str:
-    return "Richard: Vliegen"
+    return "Richard: Simulator" if duty["kind"] == "sim" else "Richard: Vliegen"
 
 
 def description(duty: dict) -> list:
+    if duty["kind"] == "sim":
+        return [f"{duty['start']:%d-%m %H:%M} - {duty['end']:%H:%M}", duty["summary"]]
     lines = [f"Aanmelden {duty['start']:%d-%m %H:%M} - afmelden {duty['end']:%d-%m %H:%M}",
              "Bestemmingen: " + ", ".join(destinations(duty))]
     items = ([(f["start"], 0, f) for f in duty["flights"]] +
@@ -208,6 +230,7 @@ HEADER = [
     "CALSCALE:GREGORIAN",
 ]
 UID_PREFIX = "family-roster-"
+COMPARE_KEYS = ("DTSTART", "DTEND", "SUMMARY", "LOCATION", "GEO", "DESCRIPTION", "TRANSP")
 
 
 def uid(duty: dict) -> str:
@@ -216,14 +239,30 @@ def uid(duty: dict) -> str:
 
 def event_props(duty: dict) -> dict:
     """The properties that define an event; also used to detect changes."""
-    return {
+    props = {
         "DTSTART": ics_utc(duty["start"]),
         "DTEND": ics_utc(duty["end"]),
         "SUMMARY": ics_escape(title(duty)),
-        "LOCATION": ics_escape(LOCATION),
         "DESCRIPTION": ics_escape("\n".join(description(duty))),
         "TRANSP": "TRANSPARENT",
     }
+    if duty["kind"] == "flight":
+        props["LOCATION"] = ics_escape(LOCATION)
+    else:
+        place = find_place(duty.get("summary", ""))
+        if place:
+            props["LOCATION"] = ics_escape(f"{place['name']}\n{place['address']}")
+            props["GEO"] = f"{place['lat']};{place['lon']}"
+            key = ("X-APPLE-STRUCTURED-LOCATION;VALUE=URI;"
+                   f"X-ADDRESS=\"{place['address']}\";X-APPLE-RADIUS=50;"
+                   f"X-TITLE=\"{place['name']}\"")
+            props[key] = f"geo:{place['lat']},{place['lon']}"
+    return props
+
+
+def find_place(text: str):
+    low = text.lower()
+    return next((p for k, p in PLACES.items() if k in low), None)
 
 
 def vevent_lines(duty: dict, stamp: str) -> list:
@@ -357,7 +396,7 @@ def sync_icloud(duties: list, dry_run: bool) -> None:
             if not dry_run:
                 dav.put(urljoin(cal_url, quote(u) + ".ics"), ics)
             added += 1
-        elif any(old["props"].get(k) != v for k, v in event_props(d).items()):
+        elif any(old["props"].get(k, "") != event_props(d).get(k, "") for k in COMPARE_KEYS):
             print(f"{prefix}~ gewijzigd: {d['start']:%d-%m %H:%M}  {title(d)}")
             if not dry_run:
                 dav.put(old["href"], ics, old["etag"])

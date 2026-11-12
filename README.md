@@ -43,13 +43,38 @@ Travel leave entries are automatically filtered out before import.
 ICS feed: one event per duty, from check-in (`aanmelden`) to check-out
 (`afmelden`). A multi-day trip with night stops becomes a single event, titled
 `Richard: Vliegen`, located at `P30 Personeelsparkeerterrein`, with the
-destinations, flights and night stops listed in the description. Leave, holidays and other non-flight items are left out.
+destinations, flights and night stops listed in the description. Simulator and
+training sessions (`Loe Check`, `FCL check`, `Type Recurrent`) become a
+`Richard: Simulator` event. Its location comes from the `PLACES` table in the
+script, matched on the roster title (e.g. `SPL-Oost`), with an exact map pin for
+Apple Calendar; unknown places get no location. Leave, holidays and other items
+are left out. All events are marked as *free* (`TRANSP:TRANSPARENT`), so they
+don't block anyone's availability.
+
+Example description of a trip:
+
+```
+Aanmelden 22-11 14:15 - afmelden 24-11 23:35
+Bestemmingen: MUC, OPO, LIN, BHX
+22-11 15:20  KL1855 AMS-MUC
+22-11 17:35  KL1856 MUC-AMS
+22-11 20:50  KL1577 AMS-OPO
+-- Nachtstop: OPO --
+23-11 17:10  KL1574 OPO-AMS
+...
+```
+
+Times in the description use the local time zone of the machine running the
+script, so make sure the NAS is set to Europe/Amsterdam.
 
 ```bash
 python3 family-roster.py              # duties from today onwards
 python3 family-roster.py --all        # include past duties
 python3 family-roster.py -o out.ics   # different output file
+python3 family-roster.py -q           # don't print the overview
 ```
+
+The duties are always written to `family-roster.ics` (excluded from git).
 
 ### Syncing to a shared iCloud calendar
 
@@ -65,10 +90,9 @@ python3 family-roster.py --upload -q          # sync (e.g. daily via Task Schedu
 
 New duties are added, changed ones updated and duties that disappeared from
 the roster are removed. Only events created by this script (UID starting with
-`family-roster-`) are ever touched, and past events are left alone.
-
-Output is written to `family-roster.ics` (excluded from git). Each event has a
-stable UID based on its check-in time, so re-importing updates existing events.
+`family-roster-`) are ever touched, and past events are left alone. Each
+event has a stable UID based on its start time, so running it repeatedly never
+creates duplicates.
 
 ## Configuration (`config.py`)
 
@@ -79,6 +103,9 @@ stable UID based on its check-in time, so re-importing updates existing events.
 | `PHP_BIN` | Path to the PHP binary on the NAS |
 | `LOAD_SCRIPT` | Path to DAViCal's `load_calendar.php` |
 | `LOG_FILE` | Path for the log file |
+| `ICLOUD_USER` | Apple ID (only for `family-roster.py --upload`) |
+| `ICLOUD_APP_PASSWORD` | App-specific password from account.apple.com |
+| `ICLOUD_CALENDAR` | Exact name of the (shared) iCloud calendar, e.g. `Familie` |
 
 `config.py` is excluded from version control via `.gitignore`.
 
@@ -92,6 +119,13 @@ Schedule the script in Synology Task Scheduler:
   ```bash
   python3 /volume1/Projects/calsync/calsync.py
   ```
+
+For the family calendar, add a second task the same way (no `sudo` needed, so
+any user that can read `config.py` will do), e.g. daily at 04:15:
+
+```bash
+python3 /volume1/Projects/calsync/family-roster.py --upload -q
+```
 
 ## License
 
